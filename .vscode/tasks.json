@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Compile",
+			"type": "shell",
+			"command": "make",
+			"args": ["img"],
+			"options": {
+				"cwd": "${workspaceFolder}/arch/x86_64"
+			},
+			"problemMatcher": [],
+		},
+		{
+			"label": "Start",
+			"type": "shell",
+			"command": "qemu-system-x86_64",
+			"args": ["boot/x86_64-mbr-ros.img"],
+			"options": {
+				"cwd": "${workspaceFolder}/arch/x86_64"
+			},
+			"problemMatcher": [],
+		},
+	]
+}
