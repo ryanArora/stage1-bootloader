@@ -1,3 +1,24 @@
-# Ryan's Operating System
+# `ros` (Ryan's Operating System)
 
 This is a toy operating system to help me learn systems programming.
+
+## Dependencies
+
+- `x86_64-elf` binutils
+- `make`
+- `qemu-system-x86_64`
+- `qemu-img`
+
+## Run
+
+This creates a `qcow2` image emulating the boot disk and executes it with the `qemu` virtual machine.
+
+```bash
+cd ./arch/x86_64
+make img
+qemu-system-x86_64 boot/x86_64-mbr-ros.img
+```
+
+# License
+
+[GPL-3.0](./LICENSE)
