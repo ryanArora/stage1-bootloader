@@ -19,14 +19,14 @@ die:
     hlt
     jmp die
 
-// void print_char(char %al);
+# void print_char(char %al);
 print_char:
 	mov $0x0E, %ah
 	mov $0, %bh
     int $0x10
     ret
 
-#void say_hi(void);
+# void say_hi(void);
 say_hi:
     mov $'H', %al
     call print_char
@@ -38,7 +38,7 @@ say_hi:
     call print_char
     ret
 
-// void check_bootable(void);
+# void check_bootable(void);
 check_bootable:
     xor %ax, %ax
     mov %ax, %ds
@@ -55,7 +55,7 @@ check_bootable:
     bootable:
     ret
 
-// void check_fat32_lba(void);
+# void check_fat32_lba(void);
 check_fat32_lba:
     xor %ax, %ax
     mov %ax, %ds
