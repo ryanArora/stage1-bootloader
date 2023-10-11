@@ -13,6 +13,7 @@ _start:
 
     call say_hi
     call check_bootable
+    call check_fat32_lba
     
 die:
     hlt
@@ -42,6 +43,7 @@ check_bootable:
     xor %ax, %ax
     mov %ax, %ds
     movb %ds:(partition_boot), %al
+
     movb $0x80, %ah
     cmp %al, %ah
     jz bootable
@@ -53,12 +55,33 @@ check_bootable:
     bootable:
     ret
 
+// void check_fat32_lba(void);
+check_fat32_lba:
+    xor %ax, %ax
+    mov %ax, %ds
+    movb %ds:(partition_boot + 4), %al
+
+    movb $0x0C, %ah
+    cmp %al, %ah
+    jz fat32_lba
+
+    movb $'F', %al
+    call print_char
+    jmp die
+
+    fat32_lba:
+    ret
 
 .fill 446 - (. - _start), 1, 0
+
 partition_table:
 partition_boot:
-.byte 0x80
-.fill 15, 1, 0
+.byte 0x80                   # Active (Bootable)
+.byte 0x00, 0x00, 0x00       # CHS of first absolute sector
+.byte 0x0C                   # Partition Type (FAT32 LBA) 0x0C
+.byte 0x00, 0x00, 0x00       # CHS of first absolute sector
+.byte 0x00, 0x00, 0x00, 0x00 # LBA of first absolute sector
+.byte 0x00, 0x00, 0x00, 0x00 # Number of sectors
 partition_root:
 .byte 0x00
 .fill 15, 1, 0
@@ -66,4 +89,5 @@ partition_three:
 .fill 16, 1, 0
 partition_four:
 .fill 16, 1, 0
+magic_word:
 .word 0xAA55
