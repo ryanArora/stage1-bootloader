@@ -1,2 +1,2 @@
-/boot/mbr.bin
+/boot/stage1.bin
 /boot/x86_64-mbr-ros.img

@@ -13,7 +13,10 @@ _start:
 
     call say_hi
     call check_bootable
-    call check_fat32_lba
+    call check_fat32_chs
+    
+    mov $1, %ax
+    call read_sectors_from_drive
     
 die:
     hlt
@@ -42,7 +45,7 @@ say_hi:
 check_bootable:
     xor %ax, %ax
     mov %ax, %ds
-    movb %ds:(partition_boot), %al
+    movb %ds:(partition_table), %al
 
     movb $0x80, %ah
     cmp %al, %ah
@@ -55,13 +58,13 @@ check_bootable:
     bootable:
     ret
 
-# void check_fat32_lba(void);
-check_fat32_lba:
+# void check_fat32_chs(void);
+check_fat32_chs:
     xor %ax, %ax
     mov %ax, %ds
-    movb %ds:(partition_boot + 4), %al
+    movb %ds:(partition_table + 4), %al
 
-    movb $0x0C, %ah
+    movb $0x0B, %ah
     cmp %al, %ah
     jz fat32_lba
 
@@ -72,22 +75,26 @@ check_fat32_lba:
     fat32_lba:
     ret
 
-.fill 446 - (. - _start), 1, 0
+# al    = sectors to read count
+# es:bx = buffer address pointer
+read_sectors_from_drive:
+    # ch    = cylinder
+    # cl    = sector
+    # dh    = head
+    # dl    = drive
+    mov $0, %ch # cylinder
+    mov $2, %cl # sector 
+    mov $0, %dh # drive
+    mov $0x80, %dl
 
+    xor %ax, %ax
+    mov %ax, %es
+    mov $partition_table + 16*4 + 2, %bx
+
+
+    int $0x13
+
+    ret
+
+.fill 446 - (. - _start), 1, 0
 partition_table:
-partition_boot:
-.byte 0x80                   # Active (Bootable)
-.byte 0x00, 0x00, 0x00       # CHS of first absolute sector
-.byte 0x0C                   # Partition Type (FAT32 LBA) 0x0C
-.byte 0x00, 0x00, 0x00       # CHS of first absolute sector
-.byte 0x00, 0x00, 0x00, 0x00 # LBA of first absolute sector
-.byte 0x00, 0x00, 0x00, 0x00 # Number of sectors
-partition_root:
-.byte 0x00
-.fill 15, 1, 0
-partition_three:
-.fill 16, 1, 0
-partition_four:
-.fill 16, 1, 0
-magic_word:
-.word 0xAA55

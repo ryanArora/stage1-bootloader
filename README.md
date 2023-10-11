@@ -2,16 +2,17 @@
 
 This is a toy operating system to help me learn systems programming.
 
-## Dependencies
+## Build Dependencies
 
 - `x86_64-elf` binutils
 - `make`
 - `qemu-system-x86_64`
-- `qemu-img`
+- `fallocate`
+- `parted`
 
 ## Run
 
-This creates a `qcow2` image emulating the boot disk and executes it with the `qemu` virtual machine.
+This creates a spare file image emulating the boot disk and executes it with the `qemu` virtual machine.
 
 ```bash
 cd ./arch/x86_64

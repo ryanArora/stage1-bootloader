@@ -2,25 +2,26 @@ AS = x86_64-elf-as
 LD = x86_64-elf-ld
 
 OS_NAME = ros
-DISK_SIZE = 1G
+DISK_SIZE = 8G
 
-.PHONY: clean img mbr
+.PHONY: clean img stage1
 
 img: boot/x86_64-mbr-$(OS_NAME).img
-boot/x86_64-mbr-$(OS_NAME).img: boot/mbr.bin
-	qemu-img create -f qcow2 boot/x86_64-mbr-$(OS_NAME).img $(DISK_SIZE)
-	qemu-img dd -f raw -O qcow2 if=boot/mbr.bin of=boot/x86_64-mbr-$(OS_NAME).img bs=512 count=1
+boot/x86_64-mbr-$(OS_NAME).img: boot/stage1.bin
+	fallocate -l $(DISK_SIZE) boot/x86_64-mbr-$(OS_NAME).img
+	printf "n\np\n1\n2048\n+128M\na\nt\n0xb\nn\np\n2\n\n\nt\n2\n0xb\np\nw\n" | fdisk boot/x86_64-mbr-ros.img
+	dd if=boot/stage1.bin of=boot/x86_64-mbr-$(OS_NAME).img bs=1 count=446 conv=notrunc
 
-mbr: boot/mbr.bin
-boot/mbr.bin: boot/stage1.S
+stage1: boot/stage1.bin
+boot/stage1.bin: boot/stage1.S
 	$(AS) -o boot/stage1.o boot/stage1.S
-	$(LD) --oformat binary -Ttext 0x7C00 -o boot/mbr.bin boot/stage1.o
+	$(LD) --oformat binary -Ttext 0x7C00 -o boot/stage1.bin boot/stage1.o
 	rm boot/stage1.o
-	@if [ $$(stat -c %s boot/mbr.bin) -gt 512 ]; then \
-		echo "Error: stage1.bin is larger than one sector (512 bytes)"; \
-		rm boot/mbr.bin; \
+	@if [ $$(stat -c %s boot/stage1.bin) -gt 446 ]; then \
+		echo "Error: stage1.bin must not be larger than 446 bytes"; \
+		rm boot/stage1.bin; \
 		exit 1; \
 	fi
 
 clean:
-	rm boot/mbr.bin boot/x86_64-mbr-$(OS_NAME).img
+	rm boot/stage1.bin boot/x86_64-mbr-$(OS_NAME).img
