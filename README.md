@@ -8,7 +8,7 @@ This is a toy operating system to help me learn systems programming.
 - `make`
 - `qemu-system-x86_64`
 - `fallocate`
-- `parted`
+- `fdisk`
 
 ## Run
 

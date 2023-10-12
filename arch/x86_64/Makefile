@@ -24,4 +24,4 @@ boot/stage1.bin: boot/stage1.S
 	fi
 
 clean:
-	rm boot/stage1.bin boot/x86_64-mbr-$(OS_NAME).img
+	rm -f boot/stage1.bin boot/x86_64-mbr-$(OS_NAME).img
