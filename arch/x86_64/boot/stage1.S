@@ -2,18 +2,24 @@
 .globl _start
 
 _start:
+    # setup data segments
+    mov $0, %ax
+    mov %ax, %ds
+    mov %ax, %es
+
     # setup the stack
     mov %ax, %ss
     mov $_start, %sp
 
-    call say_hi
+    # Hello, world!
+    mov $hello_world, %si
+    call print_str
+
     call check_mbrp1_is_bootable
     call check_mbrp1_is_fat32
     call load_bpb
-
-    xor %ax, %ax
-    mov %ax, %ds
-    mov %ds:(bpb + 13), %ax
+    call check_bpb_rootclus_16bit
+    call load_sectors_per_track
 
     jmp die
 
@@ -30,7 +36,7 @@ print_char:
     pop %ax
     ret
 
-# void print_str(char* %ds:(%si))
+# void print_str(char* %ds:(%si));
 print_str:
     movb $1, %al
     # call print_char
@@ -54,9 +60,11 @@ print_str:
     print_str_loop_end:
     ret
 
-# void print_int(int ax)
+# void print_int(int %ax);
 print_int:
     push %ax
+    push %bx
+    push %cx
 
     mov %ax, %bx
     shr $15, %bx
@@ -78,11 +86,18 @@ print_int:
         call print_uint
     end:
     
+    pop %cx
+    pop %bx
     pop %ax
     ret
 
-# void print_uint(uint ax)
+# void print_uint(uint %ax);
 print_uint:
+    push %ax
+    push %bx
+    push %cx
+    push %dx
+
     mov $0, %cx
 
     print_int_loop:
@@ -119,20 +134,22 @@ print_uint:
     jmp loop1
     loop1_end:
 
-    ret
-
-say_hi:
-    mov $'H', %al
-    call print_char
-    mov $'i', %al
-    call print_char
+    # print newline
     mov $'\r', %al
     call print_char
     mov $'\n', %al
     call print_char
+
+    pop %dx
+    pop %cx
+    pop %bx
+    pop %ax
     ret
 
 check_mbrp1_is_bootable:
+    push %ax
+    push %ds
+
     xor %ax, %ax
     mov %ax, %ds
     movb %ds:(partition_table), %al
@@ -146,9 +163,14 @@ check_mbrp1_is_bootable:
     jmp die
 
     is_bootable:
+    pop %ds
+    pop %ax
     ret
 
 check_mbrp1_is_fat32:
+    push %ax
+    push %ds
+
     xor %ax, %ax
     mov %ax, %ds
     movb %ds:(partition_table + 4), %al
@@ -162,9 +184,17 @@ check_mbrp1_is_fat32:
     jmp die
 
     is_fat32:
+    pop %ds
+    pop %ax
     ret
 
 load_bpb:
+    push %ax
+    push %bx
+    push %cx
+    push %dx
+    push %ds
+
     xor %ax, %ax
     mov %ax, %ds
 
@@ -185,12 +215,79 @@ load_bpb:
     jmp die
 
     loaded:
+    pop %ds
+    pop %dx
+    pop %cx
+    pop %bx
+    pop %ax
+    ret
+
+check_bpb_rootclus_16bit:
+    push %ax
+    push %bx
+    push %ds
+    
+    xor %ax, %ax
+    mov %ax, %ds
+
+    # BPB_RootClus_HIGH
+    mov %ds:(partition_table + 16*4+2 + 46), %ax
+
+    mov $0, %bx
+    cmp %ax, %bx
+    jz check_bpb_rootclus_16bit_done
+
+    movb $'F', %al
+    call print_char
+    movb $'R', %al
+    call print_char
+    jmp die
+
+    check_bpb_rootclus_16bit_done:
+    pop %ds
+    pop %bx
+    pop %ax
+    ret
+
+load_sectors_per_track:
+    pushf
+    push %ax
+    push %cx
+    push %dx
+    push %es
+    push %di
+
+    xor %ax, %ax
+    mov %ax, %es
+    mov %ax, %di
+
+    mov $0x08, %ah
+    mov $0x80, %dl
+    int $0x13
+    
+    and $0x3F, %cx
+    inc %cx
+    mov %cx, %es:(sectors_per_track)
+
+    pop %di
+    pop %es
+    pop %dx
+    pop %cx
+    pop %ax
+    popf
     ret
 
 die:
     hlt
     jmp die
 
+bss:
+hello_world:
+    .string "Hello, world!\r\n"
+stage2_filename:
+    .string "STAGE2  BIN"
+sectors_per_track:
+    .word 0
+
 .fill 446 - (. - _start), 1, 0
 partition_table:
-bpb:

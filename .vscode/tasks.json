@@ -15,7 +15,7 @@
 			"label": "Start",
 			"type": "shell",
 			"command": "qemu-system-x86_64",
-			"args": ["boot/x86_64-mbr-ros.img"],
+			"args": ["targets/x86_64-mbr-ros.img"],
 			"options": {
 				"cwd": "${workspaceFolder}/arch/x86_64"
 			},

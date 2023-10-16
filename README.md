@@ -17,7 +17,7 @@ This creates a spare file image emulating the boot disk and executes it with the
 ```bash
 cd ./arch/x86_64
 make img
-qemu-system-x86_64 boot/x86_64-mbr-ros.img
+qemu-system-x86_64 ../../targets/x86_64-mbr-ros.img
 ```
 
 # License
