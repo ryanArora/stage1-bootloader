@@ -38,6 +38,9 @@ print_char:
 
 # void print_str(char* %ds:(%si));
 print_str:
+    push %ax
+    push %si
+
     movb $1, %al
     # call print_char
 
@@ -58,6 +61,8 @@ print_str:
     jmp print_str_loop
     
     print_str_loop_end:
+    pop %si
+    pop %ax
     ret
 
 # void print_int(int %ax);
@@ -189,11 +194,13 @@ check_mbrp1_is_fat32:
     ret
 
 load_bpb:
+    pushf
     push %ax
     push %bx
     push %cx
     push %dx
     push %ds
+    push %es
 
     xor %ax, %ax
     mov %ax, %ds
@@ -215,11 +222,13 @@ load_bpb:
     jmp die
 
     loaded:
+    pop %es
     pop %ds
     pop %dx
     pop %cx
     pop %bx
     pop %ax
+    popf
     ret
 
 check_bpb_rootclus_16bit:
