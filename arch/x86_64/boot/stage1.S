@@ -1,9 +1,24 @@
 .code16
 .globl _start
 
+.equ PARTITION_TABLE, partition_table
+.equ MBRP1_STATUS, partition_table + 0x00
+.equ MBRP1_PARTITION_TYPE, partition_table + 0x04
+.equ MBRP1_FIRST_SECTOR, partition_table + 0x08
+
+.equ FAT32_BPB, partition_table + 16*4+2
+.equ BS_OEMName, FAT32_BPB + 3
+.equ BPB_SecPerClus, FAT32_BPB + 13
+.equ BPB_RsvdSecCnt, FAT32_BPB + 14
+.equ BPB_NumFATs, FAT32_BPB + 16
+.equ BPB_FATSz32, FAT32_BPB + 36
+.equ BPB_RootClus, FAT32_BPB + 44
+
+.equ RootClus, FAT32_BPB + 512
+
 _start:
     # setup data segments
-    mov $0, %ax
+    xor %ax, %ax
     mov %ax, %ds
     mov %ax, %es
 
@@ -11,17 +26,21 @@ _start:
     mov %ax, %ss
     mov $_start, %sp
 
-    # Hello, world!
-    mov $hello_world, %si
-    call print_str
-
     call check_mbrp1_is_bootable
     call check_mbrp1_is_fat32
+    call check_mbrp1_start_16bit
     call load_bpb
-    call check_bpb_rootclus_16bit
-    call load_sectors_per_track
 
-    jmp die
+    call check_bpb_rootclus_16bit
+    call check_bpb_fatsz32_16bit
+    call load_rootclus
+
+    mov $RootClus, %si
+    call print_str
+
+    mov $'S', %al
+    call print_char
+    jmp exit_success
 
 # void print_char(char %al);
 print_char:
@@ -103,13 +122,13 @@ print_uint:
     push %cx
     push %dx
 
-    mov $0, %cx
+    xor %cx, %cx
 
     print_int_loop:
     # ax = ax / 10
     # bx = ax % 10
     mov $10, %bx
-    mov $0, %dx
+    xor %dx, %dx
     div %bx
 
     // push
@@ -117,7 +136,7 @@ print_uint:
     inc %cx
 
     # stop if ax=0
-    mov $0, %bx
+    xor %bx, %bx
     cmp %ax, %bx
     jz print_int_loop_end
 
@@ -126,7 +145,7 @@ print_uint:
     print_int_loop_end:
 
 
-    mov $0, %dx
+    xor %dx, %dx
     loop1:
     cmp %cx, %dx
     jz loop1_end
@@ -152,151 +171,143 @@ print_uint:
     ret
 
 check_mbrp1_is_bootable:
-    push %ax
-    push %ds
-
-    xor %ax, %ax
-    mov %ax, %ds
-    movb %ds:(partition_table), %al
+    movb %ds:(MBRP1_STATUS), %al
 
     movb $0x80, %ah
     cmp %al, %ah
     jz is_bootable
 
-    movb $'B', %al
-    call print_char
-    jmp die
-
+    jmp exit_failure
+    
     is_bootable:
-    pop %ds
-    pop %ax
     ret
 
 check_mbrp1_is_fat32:
-    push %ax
-    push %ds
+    movb %ds:(MBRP1_PARTITION_TYPE), %al
 
-    xor %ax, %ax
-    mov %ax, %ds
-    movb %ds:(partition_table + 4), %al
-
-    movb $0x0B, %ah
+    movb $0x0C, %ah
     cmp %al, %ah
     jz is_fat32
 
-    movb $'F', %al
-    call print_char
-    jmp die
+    jmp exit_failure
 
     is_fat32:
-    pop %ds
-    pop %ax
+    ret
+
+check_mbrp1_start_16bit:
+    xor %ax, %ax
+    cmp %ds:(MBRP1_FIRST_SECTOR + 2), %ax
+    jz check_mbrp1_start_16bit_success
+
+    jmp exit_failure
+
+    check_mbrp1_start_16bit_success:
     ret
 
 load_bpb:
-    pushf
-    push %ax
-    push %bx
-    push %cx
-    push %dx
-    push %ds
-    push %es
-
-    xor %ax, %ax
-    mov %ax, %ds
-
-    movb $0x02, %ah
-    movb $1, %al                        # 1 sector
-    movb %ds:(partition_table + 1), %dh # head
-    movb %ds:(partition_table + 2), %cl # sector and cylinder
-    movb %ds:(partition_table + 3), %ch # cylinder
-    movb $0x80, %dl                     # hard drive 0
-    mov $partition_table + 16*4+2, %bx  # 0x7E00
-
-    int $0x13
-
-    jnc loaded
-
-    movb $'D', %al
-    call print_char
-    jmp die
-
-    loaded:
-    pop %es
-    pop %ds
-    pop %dx
-    pop %cx
-    pop %bx
-    pop %ax
-    popf
+    mov %ds:(MBRP1_FIRST_SECTOR), %ax
+    mov %ax, %ds:(disk_address_packet_sector)
+    call load
     ret
 
 check_bpb_rootclus_16bit:
-    push %ax
-    push %bx
-    push %ds
-    
     xor %ax, %ax
-    mov %ax, %ds
-
-    # BPB_RootClus_HIGH
-    mov %ds:(partition_table + 16*4+2 + 46), %ax
-
-    mov $0, %bx
-    cmp %ax, %bx
+    cmp %ax, %ds:(BPB_RootClus + 2)
     jz check_bpb_rootclus_16bit_done
 
-    movb $'F', %al
-    call print_char
-    movb $'R', %al
-    call print_char
-    jmp die
+    jmp exit_failure
 
     check_bpb_rootclus_16bit_done:
-    pop %ds
-    pop %bx
-    pop %ax
     ret
 
-load_sectors_per_track:
-    pushf
-    push %ax
-    push %cx
-    push %dx
-    push %es
-    push %di
-
+check_bpb_fatsz32_16bit:
     xor %ax, %ax
-    mov %ax, %es
-    mov %ax, %di
+    cmp %ax, %ds:(BPB_FATSz32 + 2)
+    jz check_bpb_fatsz32_16bit_success
 
-    mov $0x08, %ah
-    mov $0x80, %dl
-    int $0x13
-    
-    and $0x3F, %cx
-    inc %cx
-    mov %cx, %es:(sectors_per_track)
+    jmp exit_failure
 
-    pop %di
-    pop %es
-    pop %dx
-    pop %cx
-    pop %ax
-    popf
+    check_bpb_fatsz32_16bit_success:
     ret
 
-die:
+# %ax get_start_sector(%bx cluster);
+get_start_sector:
+    # cx = offset + RsvdSecCnt
+    mov %ds:(MBRP1_FIRST_SECTOR), %cx
+    add %ds:(BPB_RsvdSecCnt), %cx
+    jc exit_failure
+
+    # cx += FatSz32 * NumFATs
+    mov %ds:(BPB_FATSz32), %ax
+    mov %ds:(BPB_NumFATs), %dl
+    xor %dh, %dh
+    mul %dx
+    jc exit_failure
+    add %ax, %cx
+    jc exit_failure
+
+    # cx += (cluster - 2) * SecPerClus
+    mov %bx, %ax
+    add $-2, %ax
+    movb %ds:(BPB_SecPerClus), %dl
+    xor %dh, %dh
+    mul %dx
+    jc exit_failure
+    add %ax, %cx
+    jc exit_failure
+
+    mov %cx, %ax
+    ret
+
+load_rootclus:
+    # start sector
+    mov %ds:(BPB_RootClus), %bx
+    call get_start_sector
+    mov %ax, %ds:(disk_address_packet_sector)
+
+    # set number of sectors
+    movb %ds:(BPB_SecPerClus), %al
+    xor %ah, %ah
+    mov %ax, %ds:(disk_address_packet_number_of_sectors)
+
+    # set memory address
+    movw $RootClus, %ds:(disk_address_packet_offset)
+
+    call load
+    ret
+
+# void load(void);
+load:
+    movb $0x42, %ah
+    movb $0x80, %dl
+    mov $disk_address_packet, %si
+    int $0x13
+
+    jnc load_success
+
+    jmp exit_failure
+
+    load_success:
+    ret
+
+exit_failure:
+    mov $'E', %al
+    call print_char
+exit_success:
     hlt
-    jmp die
+    jmp exit_success
 
 bss:
-hello_world:
-    .string "Hello, world!\r\n"
-stage2_filename:
-    .string "STAGE2  BIN"
-sectors_per_track:
-    .word 0
+disk_address_packet:
+.byte 0x10
+.byte 0x00
+disk_address_packet_number_of_sectors:
+.word 1 # number of sectors
+disk_address_packet_offset:
+.word partition_table + 16*4+2 # offset
+.word 0 # segment
+disk_address_packet_sector:
+.quad 0 # lba sector
 
 .fill 446 - (. - _start), 1, 0
 partition_table:

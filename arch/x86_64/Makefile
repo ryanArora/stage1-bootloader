@@ -12,7 +12,7 @@ img: ../../targets/x86_64-mbr-ros.img
 	mkdir -p ../../targets/
 	rm -f ../../targets/x86_64-mbr-ros.img
 	fallocate -l $(DISK_SIZE) ../../targets/x86_64-mbr-ros.img
-	printf "n\np\n1\n2048\n+128M\na\nt\n0xb\nn\np\n2\n\n\nt\n2\n0xb\np\nw\n" | fdisk ../../targets/x86_64-mbr-ros.img
+	printf "n\np\n1\n2048\n+128M\na\nt\n0xc\nn\np\n2\n\n\nt\n2\n0xb\np\nw\n" | fdisk ../../targets/x86_64-mbr-ros.img
 	dd if=boot/stage1.bin of=../../targets/x86_64-mbr-ros.img bs=1 count=446 conv=notrunc
 
 	mkdir -p ../../targets/disk/boot/
