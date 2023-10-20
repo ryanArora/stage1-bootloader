@@ -304,7 +304,7 @@ disk_address_packet:
 disk_address_packet_number_of_sectors:
 .word 1 # number of sectors
 disk_address_packet_offset:
-.word partition_table + 16*4+2 # offset
+.word FAT32_BPB # offset
 .word 0 # segment
 disk_address_packet_sector:
 .quad 0 # lba sector
