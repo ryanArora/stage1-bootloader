@@ -47,8 +47,8 @@ print_char:
     push %ax
     push %bx
 
-	mov $0x0E, %ah
-	mov $0, %bh
+    mov $0x0E, %ah
+    mov $0, %bh
     int $0x10
 
     pop %bx
