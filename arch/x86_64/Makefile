@@ -5,7 +5,7 @@ DISK_SIZE = 8G
 PARTITION_OFFSET_SECTORS = 2048
 PARTITION_OFFSET_BYTES = 1048576
 
-.PHONY: clean img stage1 stage2 
+.PHONY: clean img stage1 stage2
 
 img: ../../targets/x86_64-mbr-ros.img
 ../../targets/x86_64-mbr-ros.img: boot/stage1.bin boot/stage2.bin
