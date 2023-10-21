@@ -1,12 +1,12 @@
 .code16
 .globl _start
 
-.equ PARTITION_TABLE, partition_table
-.equ MBRP1_STATUS, partition_table + 0x00
-.equ MBRP1_PARTITION_TYPE, partition_table + 0x04
-.equ MBRP1_FIRST_SECTOR, partition_table + 0x08
+.equ PARTITION_TABLE, _start + 446
+.equ MBRP1_STATUS, PARTITION_TABLE + 0x00
+.equ MBRP1_PARTITION_TYPE, PARTITION_TABLE + 0x04
+.equ MBRP1_FIRST_SECTOR, PARTITION_TABLE + 0x08
 
-.equ FAT32_BPB, partition_table + 16*4+2
+.equ FAT32_BPB, _start + 512
 .equ BS_OEMName, FAT32_BPB + 3
 .equ BPB_SecPerClus, FAT32_BPB + 13
 .equ BPB_RsvdSecCnt, FAT32_BPB + 14
@@ -14,7 +14,8 @@
 .equ BPB_FATSz32, FAT32_BPB + 36
 .equ BPB_RootClus, FAT32_BPB + 44
 
-.equ RootClus, FAT32_BPB + 512
+.equ CURRENT_FAT, FAT32_BPB + 512
+.equ CURRENT_CLUSTER, CURRENT_FAT + 512
 
 _start:
     # setup data segments
@@ -35,12 +36,94 @@ _start:
     call check_bpb_fatsz32_16bit
     call load_rootclus
 
-    mov $RootClus, %si
-    call print_str
+    # Temporarily exit
+    # If stage2.bin is not the first file found.
+
+    # Check if it is a file.
+    movb %ds:(CURRENT_CLUSTER + 11), %al
+    movb $0x20, %ah # archive
+    cmp %al, %ah
+    jne exit_failure
+
+    # Check name
+    mov $CURRENT_CLUSTER, %si
+    mov $stage2_filename, %di
+    call strcmp11
+    xor %bx, %bx
+    cmp %ax, %bx
+    je exit_failure
+    
+    # Load the first cluster of stage2
+    call load_stage2
+    jmp CURRENT_CLUSTER
 
     mov $'S', %al
     call print_char
     jmp exit_success
+
+# void load_stage2(directory_entry %si);
+# Limitation: Only one cluster...
+load_stage2:
+    # bx = FstClusLO
+    mov %si, %di
+    add $26, %di
+    mov %ds:(%di), %bx
+    call get_start_sector
+    mov %ax, %ds:(disk_address_packet_sector)
+
+    # set number of sectors
+    movb %ds:(BPB_SecPerClus), %al
+    xor %ah, %ah
+    mov %ax, %ds:(disk_address_packet_number_of_sectors)
+
+    # set memory address
+    movw $0, %ds:(disk_address_packet_segment)
+    movw $0x8200, %ds:(disk_address_packet_offset)
+
+    call load
+    ret
+
+# %si, %di are both length 11
+# returns %ax = 1 if %si = %di, else %ax = 0
+#
+# %ax strcmp11(str1 %si, str2 %di);
+strcmp11:
+    push %si
+    push %di
+    push %cx
+    push %dx
+
+    xor %cx, %cx // ctr = 0
+    mov $11, %dx // max_count = 11
+    strcmp11_loop:
+    cmp %cx, %dx
+    je strcmp11_loop_done
+
+    movb %ds:(%si), %al
+    movb %ds:(%di), %ah
+    cmp %al, %ah
+
+    jne strcmp11_ne
+    strcmp11_loop_continue:
+    inc %cx
+    inc %si
+    inc %di
+    jmp strcmp11_loop
+    strcmp11_loop_done:
+
+    strcmp11_e:
+    mov $1, %ax
+    jmp strcmp11_done
+
+    strcmp11_ne:
+    xor %ax, %ax
+
+    strcmp11_done:
+    pop %dx
+    pop %cx
+    pop %di
+    pop %si
+    ret
 
 # void print_char(char %al);
 print_char:
@@ -51,121 +134,6 @@ print_char:
     mov $0, %bh
     int $0x10
 
-    pop %bx
-    pop %ax
-    ret
-
-# void print_str(char* %ds:(%si));
-print_str:
-    push %ax
-    push %si
-
-    movb $1, %al
-    # call print_char
-
-    print_str_loop:
-    # read
-    movb %ds:(%si), %al
-    
-    # break if zero.
-    movb $0, %ah
-    cmp %al, %ah
-    jz print_str_loop_end
-
-    # print
-    call print_char
-
-    # loop end
-    add $1, %si
-    jmp print_str_loop
-    
-    print_str_loop_end:
-    pop %si
-    pop %ax
-    ret
-
-# void print_int(int %ax);
-print_int:
-    push %ax
-    push %bx
-    push %cx
-
-    mov %ax, %bx
-    shr $15, %bx
-
-    mov $0, %cx
-    cmp %bx, %cx
-    jz pos
-
-    mov %ax, %bx
-    movb $'-', %al
-    call print_char
-    mov %bx, %ax
-    not %ax
-    inc %ax
-    call print_uint
-    jmp end
-
-    pos:
-        call print_uint
-    end:
-    
-    pop %cx
-    pop %bx
-    pop %ax
-    ret
-
-# void print_uint(uint %ax);
-print_uint:
-    push %ax
-    push %bx
-    push %cx
-    push %dx
-
-    xor %cx, %cx
-
-    print_int_loop:
-    # ax = ax / 10
-    # bx = ax % 10
-    mov $10, %bx
-    xor %dx, %dx
-    div %bx
-
-    // push
-    push %dx
-    inc %cx
-
-    # stop if ax=0
-    xor %bx, %bx
-    cmp %ax, %bx
-    jz print_int_loop_end
-
-    jmp print_int_loop
-
-    print_int_loop_end:
-
-
-    xor %dx, %dx
-    loop1:
-    cmp %cx, %dx
-    jz loop1_end
-
-    pop %ax
-    add $'0', %ax
-    call print_char
-    inc %dx
-    
-    jmp loop1
-    loop1_end:
-
-    # print newline
-    mov $'\r', %al
-    call print_char
-    mov $'\n', %al
-    call print_char
-
-    pop %dx
-    pop %cx
     pop %bx
     pop %ax
     ret
@@ -271,7 +239,7 @@ load_rootclus:
     mov %ax, %ds:(disk_address_packet_number_of_sectors)
 
     # set memory address
-    movw $RootClus, %ds:(disk_address_packet_offset)
+    movw $CURRENT_CLUSTER, %ds:(disk_address_packet_offset)
 
     call load
     ret
@@ -298,6 +266,8 @@ exit_success:
     jmp exit_success
 
 bss:
+stage2_filename:
+.string "STAGE2  BIN"
 disk_address_packet:
 .byte 0x10
 .byte 0x00
@@ -305,9 +275,7 @@ disk_address_packet_number_of_sectors:
 .word 1 # number of sectors
 disk_address_packet_offset:
 .word FAT32_BPB # offset
+disk_address_packet_segment:
 .word 0 # segment
 disk_address_packet_sector:
 .quad 0 # lba sector
-
-.fill 446 - (. - _start), 1, 0
-partition_table:

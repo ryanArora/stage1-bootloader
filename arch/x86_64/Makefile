@@ -35,7 +35,7 @@ boot/stage1.bin: boot/stage1.S
 stage2: boot/stage2.bin
 boot/stage2.bin: boot/stage2.S
 	$(AS) -o boot/stage2.o boot/stage2.S
-	$(LD) --oformat binary -Ttext 0x7C00 -o boot/stage2.bin boot/stage2.o
+	$(LD) --oformat binary -Ttext 0x8200 -o boot/stage2.bin boot/stage2.o
 	rm boot/stage2.o
 
 clean:
