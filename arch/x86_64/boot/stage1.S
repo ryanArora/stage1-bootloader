@@ -54,20 +54,20 @@ _start:
 	mov %ax, %ss
 	mov $_start, %sp
 
-    call check_p1_is_bootable
+	call check_p1_is_bootable
 	call check_p1_is_fat32lba
 
 	call load_stage2
 	jmp CURRENT_CLUSTER
 
 exit_failure:
-    mov $'E', %al
-    mov $0x0E, %ah
+	mov $'E', %al
+	mov $0x0E, %ah
 	xor %bh, %bh
 	int $0x10
 die:
-    hlt
-    jmp die
+	hlt
+	jmp die
 
 // ----------
 // PROCEDURES
@@ -76,46 +76,46 @@ die:
 load_stage2:
 	call load_bpb
  
-    call get_stage2_start_cluster # ax
-    mov $0x820, %bx
-    mov %bx, %es # es - segment
-    xor %di, %di # di - offset 0
-    movb %ds:(BPB_SecPerClus), %bl
-    xor %bh, %bh
-    shl $5, %bx # bx - increment es
+	call get_stage2_start_cluster # ax
+	mov $0x820, %bx
+	mov %bx, %es # es - segment
+	xor %di, %di # di - offset 0
+	movb %ds:(BPB_SecPerClus), %bl
+	xor %bh, %bh
+	shl $5, %bx # bx - increment es
 
-    loop:
-    mov $0xFFFF, %cx
-    cmp %ax, %cx
-    je loop_end
+	loop:
+	mov $0xFFFF, %cx
+	cmp %ax, %cx
+	je loop_end
 
-    push %di
-    push %es
-    push %bx
-    push %ax
-    call load_cluster
-    loop_continue:
-    pop %ax
-    call get_next_cluster
-    pop %bx
-    pop %es
-    pop %di
+	push %di
+	push %es
+	push %bx
+	push %ax
+	call load_cluster
+	loop_continue:
+	pop %ax
+	call get_next_cluster
+	pop %bx
+	pop %es
+	pop %di
 
-    mov %es, %dx
-    add %bx, %dx
-    mov %dx, %es
+	mov %es, %dx
+	add %bx, %dx
+	mov %dx, %es
 
-    jmp loop
-    loop_end:
-    ret
+	jmp loop
+	loop_end:
+	ret
 
 load_bpb:
 	// The disk address packet is initialized to the default values for load_bpb.
 	// We only must load the runtime value for disk_address_packet_start_sector.
 
 	// check_p1_start_sector_16bit
-    mov $MBR_PARTITION_TABLE_P1_START_SECTOR + 2, %si
-    call assert_zero
+	mov $MBR_PARTITION_TABLE_P1_START_SECTOR + 2, %si
+	call assert_zero
 
 	mov %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR), %ax
 	mov %ax, %ds:(disk_address_packet_start_sector)
@@ -214,8 +214,8 @@ get_is_stage2_filename:
 // uint16_t get_stage2_start_cluster();
 get_stage2_start_cluster:
 	// check_bpb_rootclus_16bit
-    mov $BPB_RootClus + 2, %si
-    call assert_zero
+	mov $BPB_RootClus + 2, %si
+	call assert_zero
 	
 	// Load Root Cluster
 	xor %ax, %ax
@@ -256,7 +256,7 @@ get_stage2_start_cluster:
 	// check_directoryentry_fstclus_16bit
 	call assert_zero
 
-    add $DIRECTORY_ENTRY_FstClusLO_OFFSET - DIRECTORY_ENTRY_FstClusHI_OFFSET, %si
+	add $DIRECTORY_ENTRY_FstClusLO_OFFSET - DIRECTORY_ENTRY_FstClusHI_OFFSET, %si
 	mov %ds:(%si), %ax
 	jmp get_stage2_start_cluster_found
 
@@ -272,48 +272,48 @@ get_stage2_start_cluster:
 
 # uint16_t get_next_cluster(current_cluster %ax);
 get_next_cluster:
-    mov $4, %bx
-    mul %bx
-    # ax = FatOffset
+	mov $4, %bx
+	mul %bx
+	# ax = FatOffset
 
-    mov $512, %bx
-    div %bx
-    add %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR), %ax
-    add %ds:(BPB_RsvdSecCnt), %ax
-    # ax = offset + BPB_RsvdSecCnt + (FatOffset / 512)
-    # dx = FatOffset % 512
+	mov $512, %bx
+	div %bx
+	add %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR), %ax
+	add %ds:(BPB_RsvdSecCnt), %ax
+	# ax = offset + BPB_RsvdSecCnt + (FatOffset / 512)
+	# dx = FatOffset % 512
 
-    movw $1, %ds:(disk_address_packet_sectors)
-    movw $CURRENT_FAT, %ds:(disk_address_packet_offset)
-    movw $0, %ds:(disk_address_packet_segment)
-    movw %ax, %ds:(disk_address_packet_start_sector)
+	movw $1, %ds:(disk_address_packet_sectors)
+	movw $CURRENT_FAT, %ds:(disk_address_packet_offset)
+	movw $0, %ds:(disk_address_packet_segment)
+	movw %ax, %ds:(disk_address_packet_start_sector)
 
-    push %ax
-    push %dx
-    call load
-    pop %dx
-    pop %ax
+	push %ax
+	push %dx
+	call load
+	pop %dx
+	pop %ax
 
-    mov $CURRENT_FAT, %si
-    add %dx, %si
-    mov %ds:(%si), %ax
-    add $2, %si
-    mov %ds:(%si), %bx
-    and $0x0FFF, %bx
+	mov $CURRENT_FAT, %si
+	add %dx, %si
+	mov %ds:(%si), %ax
+	add $2, %si
+	mov %ds:(%si), %bx
+	and $0x0FFF, %bx
 
-    mov $0xFFFF, %cx
-    cmp %ax, %cx
-    jne get_next_cluster_not_final
-    mov $0x0FFF, %cx
-    cmp %bx, %cx
-    jne get_next_cluster_not_final
-    get_next_cluster_final:
-    jmp get_next_cluster_done
-    get_next_cluster_not_final:
-    // check_fatentry_16bit
-    call assert_zero
-    get_next_cluster_done:
-    ret
+	mov $0xFFFF, %cx
+	cmp %ax, %cx
+	jne get_next_cluster_not_final
+	mov $0x0FFF, %cx
+	cmp %bx, %cx
+	jne get_next_cluster_not_final
+	get_next_cluster_final:
+	jmp get_next_cluster_done
+	get_next_cluster_not_final:
+	// check_fatentry_16bit
+	call assert_zero
+	get_next_cluster_done:
+	ret
 
 // -------------
 // SANITY CHECKS
@@ -325,7 +325,7 @@ check_p1_is_bootable:
 	je check_p1_is_bootable_done
 	jmp exit_failure
 	check_p1_is_bootable_done:
-    ret
+	ret
 
 check_p1_is_fat32lba:
 	movb $MBR_PARTITION_TABLE_ENTRY_TYPE_FAT32LBA, %al
@@ -337,14 +337,14 @@ check_p1_is_fat32lba:
 
 // void assert_zero(%ds:(si));
 assert_zero:
-    push %ax
-    xor %ax, %ax
-    cmp %ax, %ds:(%si)
-    je assert_zero_done
-    jmp exit_failure
-    assert_zero_done:
-    pop %ax
-    ret
+	push %ax
+	xor %ax, %ax
+	cmp %ax, %ds:(%si)
+	je assert_zero_done
+	jmp exit_failure
+	assert_zero_done:
+	pop %ax
+	ret
 
 
 // ----
