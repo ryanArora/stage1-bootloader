@@ -27,8 +27,6 @@ exit_success:
 data:
 error_msg:
 .string "error in stage2 bootloader\r\n"
-hello_world:
-.string "Entering stage2\r\n"
 
 # void print_char(char %al);
 print_char:
@@ -156,3 +154,7 @@ print_uint:
 	pop %bx
 	pop %ax
 	ret
+
+.fill 16384, 1, 0x00
+hello_world:
+.string "Welcome to stage2\r\n"

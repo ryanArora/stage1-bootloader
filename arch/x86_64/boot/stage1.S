@@ -62,7 +62,9 @@ _start:
 
 exit_failure:
     mov $'E', %al
-    call print_char
+    mov $0x0E, %ah
+	xor %bh, %bh
+	int $0x10
 die:
     hlt
     jmp die
@@ -71,23 +73,50 @@ die:
 // PROCEDURES
 // ----------
 
-// Limitation: Only loads one cluster of stage2
 load_stage2:
 	call load_bpb
-	call get_stage2_start_cluster
+ 
+    call get_stage2_start_cluster # ax
+    mov $0x820, %bx
+    mov %bx, %es # es - segment
+    xor %di, %di # di - offset 0
+    movb %ds:(BPB_SecPerClus), %bl
+    xor %bh, %bh
+    shl $5, %bx # bx - increment es
 
-	// Load one cluster only...
-	xor %bx, %bx
-	mov %bx, %es
-	mov $CURRENT_CLUSTER, %di
+    loop:
+    mov $0xFFFF, %cx
+    cmp %ax, %cx
+    je loop_end
 
-	call load_cluster
-	ret
+    push %di
+    push %es
+    push %bx
+    push %ax
+    call load_cluster
+    loop_continue:
+    pop %ax
+    call get_next_cluster
+    pop %bx
+    pop %es
+    pop %di
+
+    mov %es, %dx
+    add %bx, %dx
+    mov %dx, %es
+
+    jmp loop
+    loop_end:
+    ret
 
 load_bpb:
 	// The disk address packet is initialized to the default values for load_bpb.
 	// We only must load the runtime value for disk_address_packet_start_sector.
-	call check_p1_start_sector_16bit
+
+	// check_p1_start_sector_16bit
+    mov $MBR_PARTITION_TABLE_P1_START_SECTOR + 2, %si
+    call assert_zero
+
 	mov %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR), %ax
 	mov %ax, %ds:(disk_address_packet_start_sector)
 	call load
@@ -96,19 +125,6 @@ load_bpb:
 // ---------
 // FUNCTIONS
 // ---------
-
-// void print_char(char %al);
-print_char:
-	push %ax
-	push %bx
-
-	mov $0x0E, %ah
-	xor %bh, %bh
-	int $0x10
-
-	pop %bx
-	pop %ax
-	ret
 
 // Precondition: disk_address_packet is initialized.
 //
@@ -197,7 +213,9 @@ get_is_stage2_filename:
 //
 // uint16_t get_stage2_start_cluster();
 get_stage2_start_cluster:
-	call check_bpb_rootclus_16bit
+	// check_bpb_rootclus_16bit
+    mov $BPB_RootClus + 2, %si
+    call assert_zero
 	
 	// Load Root Cluster
 	xor %ax, %ax
@@ -235,8 +253,10 @@ get_stage2_start_cluster:
 	# In this case we are good!
 	# we can corrupt %si because we're about to return
 	add $DIRECTORY_ENTRY_FstClusHI_OFFSET, %si
-	call check_directoryentry_fstclus_16bit
-	add $DIRECTORY_ENTRY_FstClusLO_OFFSET - DIRECTORY_ENTRY_FstClusHI_OFFSET, %si
+	// check_directoryentry_fstclus_16bit
+	call assert_zero
+
+    add $DIRECTORY_ENTRY_FstClusLO_OFFSET - DIRECTORY_ENTRY_FstClusHI_OFFSET, %si
 	mov %ds:(%si), %ax
 	jmp get_stage2_start_cluster_found
 
@@ -249,6 +269,51 @@ get_stage2_start_cluster:
 
 	get_stage2_start_cluster_found:
 	ret
+
+# uint16_t get_next_cluster(current_cluster %ax);
+get_next_cluster:
+    mov $4, %bx
+    mul %bx
+    # ax = FatOffset
+
+    mov $512, %bx
+    div %bx
+    add %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR), %ax
+    add %ds:(BPB_RsvdSecCnt), %ax
+    # ax = offset + BPB_RsvdSecCnt + (FatOffset / 512)
+    # dx = FatOffset % 512
+
+    movw $1, %ds:(disk_address_packet_sectors)
+    movw $CURRENT_FAT, %ds:(disk_address_packet_offset)
+    movw $0, %ds:(disk_address_packet_segment)
+    movw %ax, %ds:(disk_address_packet_start_sector)
+
+    push %ax
+    push %dx
+    call load
+    pop %dx
+    pop %ax
+
+    mov $CURRENT_FAT, %si
+    add %dx, %si
+    mov %ds:(%si), %ax
+    add $2, %si
+    mov %ds:(%si), %bx
+    and $0x0FFF, %bx
+
+    mov $0xFFFF, %cx
+    cmp %ax, %cx
+    jne get_next_cluster_not_final
+    mov $0x0FFF, %cx
+    cmp %bx, %cx
+    jne get_next_cluster_not_final
+    get_next_cluster_final:
+    jmp get_next_cluster_done
+    get_next_cluster_not_final:
+    // check_fatentry_16bit
+    call assert_zero
+    get_next_cluster_done:
+    ret
 
 // -------------
 // SANITY CHECKS
@@ -270,30 +335,16 @@ check_p1_is_fat32lba:
 	check_p1_is_fat32lba_done:
 	ret
 
-check_p1_start_sector_16bit:
-	xor %ax, %ax
-	cmp %ax, %ds:(MBR_PARTITION_TABLE_P1_START_SECTOR + 2)
-	je check_p1_start_sector_16bit_done
-	jmp exit_failure
-	check_p1_start_sector_16bit_done:
-	ret
-
-check_bpb_rootclus_16bit:
-	xor %ax, %ax
-	cmp %ax, %ds:(BPB_RootClus + 2)
-	je check_bpb_rootclus_16bit_done
-	jmp exit_failure
-	check_bpb_rootclus_16bit_done:
-	ret
-
-# si = FstClus_HI
-check_directoryentry_fstclus_16bit:
-	xor %ax, %ax
-	cmp %ax, %ds:(%si)
-	je check_directoryentry_fstclus_16bit_done
-	jmp exit_failure
-	check_directoryentry_fstclus_16bit_done:
-	ret
+// void assert_zero(%ds:(si));
+assert_zero:
+    push %ax
+    xor %ax, %ax
+    cmp %ax, %ds:(%si)
+    je assert_zero_done
+    jmp exit_failure
+    assert_zero_done:
+    pop %ax
+    ret
 
 
 // ----
